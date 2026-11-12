@@ -1150,7 +1150,7 @@ static void idleSweep(CorHttpServer* serverP)
   uint64_t now     = corHttpNowMs();
   uint64_t timeout = (uint64_t) serverP->keepAliveTimeout * 1000;
 
-  for (int ix = 0; ix < serverP->connPoolSize; ix++)
+  for (int ix = 0; ix < serverP->connPoolUsed; ix++)       // the slots never used hold no connection
   {
     CorHttpConn* connP = &serverP->connPool[ix];
 
@@ -1346,7 +1346,7 @@ void corHttpServeEnd(CorHttpServer* serverP)
   if (serverP->connPool == NULL)
     return;
 
-  for (int ix = 0; ix < serverP->connPoolSize; ix++)
+  for (int ix = 0; ix < serverP->connPoolUsed; ix++)       // the slots never used hold no connection
   {
     CorHttpConn* connP = &serverP->connPool[ix];
 
