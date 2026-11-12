@@ -236,8 +236,9 @@ typedef struct CorHttpServer
   unsigned short       port;
 
   CorHttpConn*         connPool;                 // the whole pool, one allocation
-  CorHttpConn*         freeConns;                // free list head
+  CorHttpConn*         freeConns;                // free list head - slots used before and given back
   int                  connPoolSize;
+  int                  connPoolUsed;             // the slots set up so far: [0, connPoolUsed) - the rest untouched
   int                  activeConns;
 
   CorHttpRequestCb     requestCb;

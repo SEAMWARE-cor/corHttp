@@ -55,6 +55,14 @@ uint64_t corHttpNowMs(void)
 //
 // corHttpConnPoolInit -
 //
+//
+// ⭐ ONE allocation, and no slot touched: a slot is set up when a connection first needs it (connSlotSetup).
+//
+// The pool is reserved at start, so no request mallocs its machinery. But setting up every slot at start
+// wrote 13.7 KB + an 8 KiB buffer per slot - 1024 slots, ~14 MB of page faults, ~3 ms of a broker's start
+// (doc/performance.md, start-up). calloc's large block comes from the kernel already zeroed and is not
+// written here, so its pages cost nothing until a connection uses them.
+//
 CorHttpStatus corHttpConnPoolInit(CorHttpServer* serverP, int size)
 {
   serverP->connPool = (CorHttpConn*) calloc(size, sizeof(CorHttpConn));
@@ -63,35 +71,37 @@ CorHttpStatus corHttpConnPoolInit(CorHttpServer* serverP, int size)
     return CorHttpOutOfMemory;
 
   serverP->connPoolSize = size;
+  serverP->connPoolUsed = 0;
   serverP->freeConns    = NULL;
 
-  //
-  // Threaded back to front so the free list comes out in ascending order. Not
-  // required for correctness - it makes a pool dump readable, and a connection
-  // index that means something is worth a loop that counts downwards.
-  //
-  for (int ix = size - 1; ix >= 0; ix--)
-  {
-    CorHttpConn* connP = &serverP->connPool[ix];
-
-    connP->buf = (char*) malloc(COR_HTTP_INITIAL_BUF_SIZE);
-    if (connP->buf == NULL)
-    {
-      corHttpConnPoolRelease(serverP);
-      return CorHttpOutOfMemory;
-    }
-
-    connP->bufSize = COR_HTTP_INITIAL_BUF_SIZE;
-    connP->fd      = -1;
-    connP->fileFd  = -1;                         // not 0: that is a file descriptor too
-    connP->serverP = serverP;                    // the pool belongs to one loop for its whole life
-    connP->state   = COR_HTTP_CONN_FREE;
-
-    connP->next        = serverP->freeConns;
-    serverP->freeConns = connP;
-  }
-
   return CorHttpOk;
+}
+
+
+
+// -----------------------------------------------------------------------------
+//
+// connSlotSetup - the next slot never used, set up; NULL when every slot is (or its buffer cannot be had)
+//
+static CorHttpConn* connSlotSetup(CorHttpServer* serverP)
+{
+  if (serverP->connPoolUsed >= serverP->connPoolSize)
+    return NULL;
+
+  CorHttpConn* connP = &serverP->connPool[serverP->connPoolUsed];
+
+  connP->buf = (char*) malloc(COR_HTTP_INITIAL_BUF_SIZE);
+  if (connP->buf == NULL)
+    return NULL;
+
+  connP->bufSize = COR_HTTP_INITIAL_BUF_SIZE;
+  connP->fd      = -1;
+  connP->fileFd  = -1;                           // not 0: that is a file descriptor too
+  connP->serverP = serverP;                      // the pool belongs to one loop for its whole life
+  connP->state   = COR_HTTP_CONN_FREE;
+
+  serverP->connPoolUsed++;
+  return connP;
 }
 
 
@@ -105,7 +115,7 @@ void corHttpConnPoolRelease(CorHttpServer* serverP)
   if (serverP->connPool == NULL)
     return;
 
-  for (int ix = 0; ix < serverP->connPoolSize; ix++)
+  for (int ix = 0; ix < serverP->connPoolUsed; ix++)
   {
     CorHttpConn* connP = &serverP->connPool[ix];
 
@@ -136,6 +146,7 @@ void corHttpConnPoolRelease(CorHttpServer* serverP)
   serverP->connPool     = NULL;
   serverP->freeConns    = NULL;
   serverP->connPoolSize = 0;
+  serverP->connPoolUsed = 0;
   serverP->activeConns  = 0;
 }
 
@@ -204,11 +215,12 @@ CorHttpConn* corHttpConnGet(CorHttpServer* serverP, int fd)
 {
   CorHttpConn* connP = serverP->freeConns;
 
-  if (connP == NULL)
+  if (connP != NULL)
+    serverP->freeConns = connP->next;            // a slot used before
+  else if ((connP = connSlotSetup(serverP)) == NULL)
     return NULL;                                 // pool exhausted - the caller answers 503
 
-  serverP->freeConns = connP->next;
-  connP->next        = NULL;
+  connP->next = NULL;
 
   connP->fd           = fd;
   connP->serverP      = serverP;
