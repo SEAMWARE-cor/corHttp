@@ -172,9 +172,9 @@ what reaches the layer above is what reached it before.
 
 Two sibling repos, and libc. No libmicrohttpd, no OpenSSL, no JSON library.
 
-- [`corAlloc`](https://github.com/SEAMWARE/corAlloc) — arena allocator (`CorAlloc`),
+- [`corAlloc`](https://github.com/SEAMWARE-cor/corAlloc) — arena allocator (`CorAlloc`),
   used for the per-request pool on each connection
-- [`corBase`](https://github.com/SEAMWARE/corBase) — the library log corAlloc logs through, and
+- [`corBase`](https://github.com/SEAMWARE-cor/corBase) — the library log corAlloc logs through, and
   `corCoLoop`, the coroutines' waits and timers on the loop
 
 The layout is the build contract, as everywhere in this stack: repos are
