@@ -43,6 +43,7 @@
 #include <time.h>                                // time, gmtime_r
 #include <sys/socket.h>                          // send, MSG_NOSIGNAL
 
+#include "corBase/corLinux.h"                    // MSG_NOSIGNAL (macOS: 0, SIGPIPE ignored)
 #include "corHttp/CorHttp.h"                     // CorHttpConn
 #include "corHttp/corHttpInternal.h"             // Own interface
 
