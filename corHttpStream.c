@@ -20,6 +20,7 @@
 #include <string.h>                              // memcpy, strcmp
 #include <unistd.h>                              // write, close
 
+#include "corBase/corLinux.h"                    // corEventfdSignal
 #include "corHttp/CorHttp.h"                     // CorHttpConn, CorHttpServer
 #include "corHttp/corHttpInternal.h"             // Own interface
 
@@ -100,9 +101,7 @@ static void wake(CorHttpStream* sP)
 
   if (serverP->resumeFd != -1)
   {
-    uint64_t one     = 1;
-    ssize_t  ignored = write(serverP->resumeFd, &one, sizeof(one));
-    (void) ignored;                              // a full counter means the loop is already awake
+    corEventfdSignal(serverP->resumeFd);                        // a full counter means the loop is already awake
   }
 }
 

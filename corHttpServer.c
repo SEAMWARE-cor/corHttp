@@ -36,12 +36,10 @@
 #include <stdio.h>                               // snprintf
 #include <stdlib.h>                              // realloc, free
 #include <string.h>                              // memset, strerror
-#include <sys/epoll.h>                           // epoll_create1, epoll_ctl, epoll_wait
-#include <sys/eventfd.h>                         // eventfd
-#include <sys/sendfile.h>                        // sendfile
 #include <sys/socket.h>                          // socket, bind, listen, accept4, setsockopt, send, MSG_NOSIGNAL
 #include <unistd.h>                              // read, write, close
 
+#include "corBase/corLinux.h"                    // epoll, eventfd, accept4, sendfile (macOS: kqueue, a pipe)
 #include "corBase/corCoLoop.h"                  // corCoLoopEvent, corCoLoopExpire, corCoLoopTimeoutMs
 #include "corHttp/CorHttp.h"                     // CorHttpServer, CorHttpConn
 #include "corHttp/corHttpInternal.h"             // Own interface
@@ -357,9 +355,7 @@ static void acceptDeal(CorHttpServer* serverP)
     toP->handV[toP->handCount++] = fd;
     pthread_mutex_unlock(&toP->handMutex);
 
-    uint64_t one     = 1;
-    ssize_t  ignored = write(toP->handFd, &one, sizeof(one));
-    (void) ignored;
+    corEventfdSignal(toP->handFd);
   }
 }
 
@@ -918,9 +914,7 @@ void corHttpResume(CorHttpConn* connP)
 
   if (serverP->resumeFd != -1)
   {
-    uint64_t one = 1;
-    ssize_t  ignored = write(serverP->resumeFd, &one, sizeof(one));
-    (void) ignored;                              // a full counter means the loop is already awake
+    corEventfdSignal(serverP->resumeFd);                        // a full counter means the loop is already awake
   }
 }
 
@@ -1379,9 +1373,7 @@ void corHttpStop(CorHttpServer* serverP)
   //
   if (serverP->resumeFd != -1)
   {
-    uint64_t one     = 1;
-    ssize_t  ignored = write(serverP->resumeFd, &one, sizeof(one));
-    (void) ignored;
+    corEventfdSignal(serverP->resumeFd);
   }
 }
 
@@ -1395,7 +1387,7 @@ void corHttpRelease(CorHttpServer* serverP)
 {
   if (serverP->handFd != -1)
   {
-    close(serverP->handFd);
+    corEventfdClose(serverP->handFd);
     serverP->handFd = -1;
   }
 
@@ -1410,7 +1402,7 @@ void corHttpRelease(CorHttpServer* serverP)
 
   if (serverP->resumeFd != -1)
   {
-    close(serverP->resumeFd);
+    corEventfdClose(serverP->resumeFd);
     serverP->resumeFd = -1;
   }
 
